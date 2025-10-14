@@ -3,7 +3,7 @@
 #include <stdlib.h>
 
 
-// Label for Ethernet packet
+// Label for Ethernet packet fields
 #define PACKET_LBL "Ethernet header:\n----------------"
 #define TYPE_LBL "\nType:\t\t\t\t"
 #define MAC_SRC_LBL "\nSource MAC address:\t\t"
@@ -30,9 +30,61 @@
 #define ERR_FILE_NOT_OPEN 2 // File failed to open
 
 // Error Messages
-#define MSG_FILE_NOT_FOUND "\nError: A path to a .bin containing with Ethernet " \
-                           " packet is required. \n Run with `./PacketDecode <path>`"
+#define MSG_FILE_NOT_FOUND "\nError: A path to a .bin containing Ethernet " \
+                           " packet data is required. \n Run with `./PacketDecode <path>`"
 #define MSG_FILE_NOT_OPEN "\nError: File argument could not be opened"
+
+
+// Helper functions
+int printBytes(FILE* file, int numBytes, const char* delim);
+static inline int printByteSafe(FILE* file);
+int printPayload(FILE* payloadData);
+
+
+// Run program to decode and display Ethernet packets
+// Takes path to .bin file containing one packet of data as argument
+int main(int argc, char *argv[]) {
+    int errCode = 0; // Tracks errors
+    FILE* packetData = NULL; // Pointer to input packet data
+
+    if(argc < 2) { // No filepath argument received
+        errCode = 1;
+    } else { // Attempt to open binary packet data
+        packetData = fopen(argv[1], "rb"); // Open file
+
+        if(!packetData) { // Could not open file
+            errCode = 2;
+        } else { // Read file data
+            printf(PACKET_LBL); // Display packet's header
+
+            printf(MAC_DEST_LBL); // Print destination MAC address
+            printBytes(packetData, MAC_ADDR_LEN, MAC_ADDR_DELIM);
+        
+            printf(MAC_SRC_LBL); // Print Source MAC address
+            printBytes(packetData, MAC_ADDR_LEN, MAC_ADDR_DELIM);
+            
+            printf(TYPE_LBL); // Print type field
+            printBytes(packetData, TYPE_LEN, TYPE_DELIM);
+
+            printf(PAYLOAD_LBL); // Print payload
+            printPayload(packetData);
+
+            fclose(packetData); // Close packet data file
+        }
+
+    }
+
+    printf("\n"); // Print trailing newline
+
+    // Handle errors
+    if(errCode == ERR_FILE_NOT_FOUND) { // Missing path argument
+        printf(MSG_FILE_NOT_FOUND);
+    } else if(errCode == ERR_FILE_NOT_OPEN) { // File could not be opened
+        printf(MSG_FILE_NOT_OPEN);
+    }
+
+    return errCode;
+}
 
 
 // Prints specified number of bytes pointed to by `file` arg
@@ -62,12 +114,16 @@ int printBytes(FILE* file, int numBytes, const char* delim) {
 // Returns non-zero if end of file reached
 static inline int printByteSafe(FILE* file) {
     int nextByte; // Stores byte being read
+    int bytesRead = 0;
+    
 
-    // Read and display byte
-    fread(&nextByte, 1, 1, file);
-    printf("%02X", nextByte& 0xFF);
+    // attempt to read and display byte
+    if(fread(&nextByte, 1, 1, file)) {
+        printf("%02X", nextByte& 0xFF);
+        bytesRead = 1;
+    }
 
-    return feof(file); 
+    return bytesRead; 
 }
 
 
@@ -80,7 +136,7 @@ int printPayload(FILE* payloadData) {
     int rowLen = PAYLOAD_NUM_COLS * PAYLOAD_COL_WIDTH; // Total row length
 
     // Print bytes until end of file
-    while(!printByteSafe(payloadData)) {
+    while(printByteSafe(payloadData)) {
         if(bytesRead % rowLen == rowLen - 1) { // End of row reached
             printf(PAYLOAD_ROW_DELIM);
         } else if(bytesRead % PAYLOAD_COL_WIDTH == PAYLOAD_COL_WIDTH - 1) { // End of column reached
@@ -92,47 +148,5 @@ int printPayload(FILE* payloadData) {
         bytesRead++; // Increment count
     }
 
-    return bytesRead;
-}
-
-
-// Run program to decode and display Ethernet packets
-// Takes path to .bin file containing one packet of data as argument
-int main(int argc, char *argv[]) {
-    int errCode = 0; // Tracks errors
-    FILE* packetData = NULL; // Pointer to input packet data
-
-    if(argc < 2) { // No filepath argument received
-        errCode = 1;
-    } else { // Attempt to open binary packet data
-        packetData = fopen(argv[1], "rb"); // Open file
-
-        if(!packetData) { // Could not open file
-            errCode = 2;
-        } else { // Read file data
-            printf(PACKET_LBL); // Display packet's header
-
-            printf(MAC_DEST_LBL); // Print destination MAC address
-            printBytes(packetData, MAC_ADDR_LEN, MAC_ADDR_DELIM);
-        
-            printf(MAC_SRC_LBL); // Print Source MAC address
-            printBytes(packetData, MAC_ADDR_LEN, MAC_ADDR_DELIM);
-            
-            printf(TYPE_LBL); // Print destination MAC address
-            printBytes(packetData, TYPE_LEN, TYPE_DELIM);
-
-            printf(PAYLOAD_LBL); // Print payload
-            printPayload(packetData);
-        }
-
-    }
-
-    // Handle errors
-    if(errCode == ERR_FILE_NOT_FOUND) { // Missing path argument
-        printf(MSG_FILE_NOT_FOUND);
-    } else if(errCode == ERR_FILE_NOT_OPEN) { // File could not be opened
-        printf(MSG_FILE_NOT_OPEN);
-    }
-
-    return errCode;
+    return bytesRead; 
 }
