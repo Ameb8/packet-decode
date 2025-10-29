@@ -1,10 +1,14 @@
 #define _CRT_SECURE_NO_WARNINGS
+
+#include <stdio.h>
+
+#define _CRT_SECURE_NO_WARNINGS
 #include <stdio.h>
 #include <stdlib.h>
 
 
 // Label for Ethernet packet fields
-#define PACKET_LBL "Ethernet header:\n----------------"
+#define ETHERNET_LBL "Ethernet header:\n----------------"
 #define TYPE_LBL "\nType:\t\t\t\t"
 #define MAC_SRC_LBL "\nSource MAC address:\t\t"
 #define MAC_DEST_LBL "\nDestination MAC address:\t"
@@ -17,6 +21,25 @@
 // Type Field Format
 #define TYPE_LEN 2 // Length of type field
 #define TYPE_DELIM "" // Delimiter between type field bytes
+
+// IP Header Format
+#define IP_LBL "\n\nIPv4 Header:\n----------------"
+#define VER_LBL "\nVersion:\t\t\t"
+#define HLEN_LBL "\nInternet header length:\t"
+#define DSCP_LBL "\nDSCP:\t\t\t\t"
+#define ECN_LBL "\nECN:\t\t\t\t"
+#define LEN_LBL "\nTotal Length:\t\t"
+#define ID_LBL "\nIdentification:\t\t"
+#define FLAGS_LBL "\nFlags:\t\t\t\t"
+#define FRAG_OFF_LBL "\nFragment Offset:\t\t"
+#define TTL_LBL "\nTime to Live:\t\t\t"
+#define PROTOCOL_LBL "\nProtocol:\t\t\t"
+#define IP_CHECKSUM_LBL "\nIP Checksum:\t\t\t"
+#define IP_SRC_LBL "\nSource IP Address:\t\t"
+#define IP_DEST_LBL "\nDestination IP Address:\t"
+#define STR(x) #x
+#define IP_OPTION_LBL(n) "\nIP Option Word #" STR(n) ":\t\t"
+#define NO_OPTIONS_LBL "\nOptions:\t\t\tNo Options"
 
 // Payload Format
 #define PAYLOAD_DELIM " " // Delimiter between each individual payload byte
@@ -38,7 +61,9 @@
 // Helper functions
 int printBytes(FILE* file, int numBytes, const char* delim);
 static inline int printByteSafe(FILE* file);
-int printPayload(FILE* payloadData);
+int printPayload(FILE* packetData);
+void printEthernetHeader(FILE* packetData);
+void printIPHeader(FILE* packetData);
 
 
 // Run program to decode and display Ethernet packets
@@ -55,18 +80,11 @@ int main(int argc, char *argv[]) {
         if(!packetData) { // Could not open file
             errCode = ERR_FILE_NOT_OPEN;
         } else { // Read file data
-            printf(PACKET_LBL); // Display packet's header
+            printEthernetHeader(packetData); // Process Ethernet header
 
-            printf(MAC_DEST_LBL); // Print destination MAC address
-            printBytes(packetData, MAC_ADDR_LEN, MAC_ADDR_DELIM);
-        
-            printf(MAC_SRC_LBL); // Print Source MAC address
-            printBytes(packetData, MAC_ADDR_LEN, MAC_ADDR_DELIM);
-            
-            printf(TYPE_LBL); // Print type field
-            printBytes(packetData, TYPE_LEN, TYPE_DELIM);
+            printIPHeader(packetData); // Process IP header
 
-            printf(PAYLOAD_LBL); // Print payload
+            printf(PAYLOAD_LBL); // Process payload
             printPayload(packetData);
 
             fclose(packetData); // Close packet data file
@@ -85,7 +103,6 @@ int main(int argc, char *argv[]) {
 
     return errCode;
 }
-
 
 // Prints specified number of bytes pointed to by `file` arg
 // Output is separated by `delim` arg
@@ -130,12 +147,12 @@ static inline int printByteSafe(FILE* file) {
 // Prints in the column-based format specified by PAYLOAD_ Macro constants
 // `payloadData` argument must point to begining of payload data
 // Returns the number of bytes read
-int printPayload(FILE* payloadData) {
+int printPayload(FILE* packetData) {
     int bytesRead = 0; // Tracks total bytes read
     int rowLen = PAYLOAD_NUM_COLS * PAYLOAD_COL_WIDTH; // Total row length
 
     // Print bytes until end of file
-    while(printByteSafe(payloadData)) {
+    while(printByteSafe(packetData)) {
         if(bytesRead % rowLen == rowLen - 1) { // End of row reached
             printf(PAYLOAD_ROW_DELIM);
         } else if(bytesRead % PAYLOAD_COL_WIDTH == PAYLOAD_COL_WIDTH - 1) { // End of column reached
@@ -148,4 +165,35 @@ int printPayload(FILE* payloadData) {
     }
 
     return bytesRead; 
+}
+
+void printEthernetHeader(FILE* packetData) {
+    printf(ETHERNET_LBL); // Display packet's header
+
+    printf(MAC_DEST_LBL); // Print destination MAC address
+    printBytes(packetData, MAC_ADDR_LEN, MAC_ADDR_DELIM);
+
+    printf(MAC_SRC_LBL); // Print Source MAC address
+    printBytes(packetData, MAC_ADDR_LEN, MAC_ADDR_DELIM);
+    
+    printf(TYPE_LBL); // Print type field
+    printBytes(packetData, TYPE_LEN, TYPE_DELIM);
+}
+
+void printIPHeader(FILE* packetData) {
+    int nextByte;
+    int extractedBits;
+    int optLen;
+
+    fread(&nextByte, 1, 1, packetData); // Read first byte
+
+    extractedBits = (nextByte >> 4) & 0x0F; // Extract 4-bit verion field
+    printf("%s%02X", VER_LBL, extractedBits); // Print version field
+
+    optLen = nextByte & 0x0F; // Extract 4-bit IH Length field
+    printf("%s%02X", HLEN_LBL, optLen); // Print IH length
+
+
+
+
 }
