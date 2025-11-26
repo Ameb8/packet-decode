@@ -2,7 +2,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-
 // Label for Ethernet packet fields
 #define ETHERNET_LBL "Ethernet header:\n----------------"
 #define TYPE_LBL "\nType:\t\t\t\t"
@@ -50,6 +49,18 @@
 
 #define IP_ADR_LEN 4
 
+// TCP header format
+#define TCP_LBL "\n\nTCP HEADER:\n----------------"
+#define SRC_PORT_LBL "\nSource Port:\t\t\t"
+#define DEST_PORT_LBL "\nDestination Port:\t\t"
+#define SEQ_NUM_LBL "\nRaw Sequence Number:\t\t"
+#define ACK_NUM_LBL "\nRaw Acknowledgement Number:\t"
+#define DATA_OFS_LBL "\nData Offset:\t\t\t"
+#define TCP_FLAGS_LBL "\nFlags:\t\t\t\t"
+#define WINDOW_SIZE_LBL "\nWindow Size:\t\t\t"
+#define TCP_CHECKSUM_LBL "\nTCP Checksum:\t\t\t"
+
+
 // Payload Format
 #define PAYLOAD_DELIM " " // Delimiter between each individual payload byte
 #define PAYLOAD_COL_DELIM "   " // Delimiter separating payload columns
@@ -72,6 +83,7 @@ int printBytes(FILE* file, int numBytes, const char* delim);
 static inline int printByteSafe(FILE* file);
 void printEthernetHeader(FILE* packetData);
 void printIPHeader(FILE* packetData);
+void printTCPHeader(FILE* packetData);
 static inline void printIPOptions(FILE* packetData, int numOptions);
 int printPayload(FILE* packetData);
 
@@ -93,6 +105,8 @@ int main(int argc, char *argv[]) {
             printEthernetHeader(packetData); // Process Ethernet header
 
             printIPHeader(packetData); // Process IP header
+
+            printTCPHeader(packetData);
 
             printf(PAYLOAD_LBL); // Process payload
             printPayload(packetData);
@@ -152,7 +166,6 @@ static inline int printByteSafe(FILE* file) {
 
     return bytesRead; 
 }
-
 
 
 // Reads and prints IP address from binary file
@@ -312,6 +325,31 @@ void printIPHeader(FILE* packetData) {
 }
 
 
+void printTCPHeader(FILE* packetData) {
+    int nextByte;
+    int extractedBits;
+    int optLen;
+
+    // Read and display first byte of source port
+    fread(&nextByte, 1, 1, packetData);
+    printf("%s%d", SRC_PORT_LBL, nextByte);
+
+    // Read and display 2nd byte in source port
+    fread(&nextByte, 1, 1, packetData);
+    printf("%d", nextByte);
+
+    // Read and display 1st byte in destination port
+    fread(&nextByte, 1, 1, packetData);
+    printf("%s%d", DEST_PORT_LBL, nextByte);
+
+    // Read and display 2nd byte in destination port
+    fread(&nextByte, 1, 1, packetData);
+    printf("%d", nextByte);
+
+
+}
+
+
 // Prints the payload portion of an Ethernet packet
 // Prints in the column-based format specified by PAYLOAD_ Macro constants
 // `payloadData` argument must point to begining of payload data
@@ -333,5 +371,5 @@ int printPayload(FILE* packetData) {
         bytesRead++; // Increment count
     }
 
-    return bytesRead; 
+    return bytesRead;
 }
