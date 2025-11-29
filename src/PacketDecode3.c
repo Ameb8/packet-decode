@@ -1,6 +1,7 @@
-#define _CRT_SECURE_NO_WARNINGS
 #include <stdio.h>
 #include <stdlib.h>
+#define _CRT_SECURE_NO_WARNINGS
+#include <stdint.h>
 
 // Label for Ethernet packet fields
 #define ETHERNET_LBL "Ethernet header:\n----------------"
@@ -44,10 +45,11 @@
 
 // Fragment Flag Labels
 #define FRAG_NONE "No Flag Set"
-#define FRAG_DISABLED "Dont' Fragment"
+#define FRAG_DISABLED "Don't Fragment"
 #define FRAG_MORE "More Fragments"
 
 #define IP_ADR_LEN 4
+
 
 // TCP header format
 #define TCP_LBL "\n\nTCP HEADER:\n----------------"
@@ -58,7 +60,10 @@
 #define DATA_OFS_LBL "\nData Offset:\t\t\t"
 #define TCP_FLAGS_LBL "\nFlags:\t\t\t\t"
 #define WINDOW_SIZE_LBL "\nWindow Size:\t\t\t"
-#define TCP_CHECKSUM_LBL "\nTCP Checksum:\t\t\t"
+#define TCP_CHECKSUM_LBL "\nTCP Checksum:\t\t\t0x"
+#define TCP_URG_PTR_LBL "\nUrgent Pointer:\t\t\t"
+#define TCP_OPT_LBL "\nTCP Option word #"
+#define TCP_NO_OPT_LBL "\nOptions:\t\t\tNo Options"
 
 
 // Payload Format
@@ -77,10 +82,21 @@
                            " packet data is required. \n Run with `./PacketDecode <path>`"
 #define MSG_FILE_NOT_OPEN "\nError: File argument could not be opened"
 
+// Bit masks to check specific bit in byte
+#define BIT_MASK_0 1
+#define BIT_MASK_1 2
+#define BIT_MASK_2 4
+#define BIT_MASK_3 8
+#define BIT_MASK_4 16
+#define BIT_MASK_5 32
 
-// Helper functions
-int printBytes(FILE* file, int numBytes, const char* delim);
+
+// Helper functions for reading and printing data
+static inline int printBytes(FILE* file, int numBytes, const char* delim);
 static inline int printByteSafe(FILE* file);
+static inline uint32_t readUIntBE(FILE* data, int nBytes);
+
+// Functions to parse and display packet segments
 void printEthernetHeader(FILE* packetData);
 void printIPHeader(FILE* packetData);
 void printTCPHeader(FILE* packetData);
@@ -106,7 +122,7 @@ int main(int argc, char *argv[]) {
 
             printIPHeader(packetData); // Process IP header
 
-            printTCPHeader(packetData);
+            printTCPHeader(packetData); // Process TCP header
 
             printf(PAYLOAD_LBL); // Process payload
             printPayload(packetData);
@@ -132,20 +148,20 @@ int main(int argc, char *argv[]) {
 // Prints specified number of bytes pointed to by `file` arg
 // Output is separated by `delim` arg
 // Does not check for end of file or error after reading bytes
-int printBytes(FILE* file, int numBytes, const char* delim) {
+static inline int printBytes(FILE* file, int numBytes, const char* delim) {
     int nextByte = 0; // Stores read bytes
     int bytesRead = 0; // Tracks number of bytes read
 
     // Read bytes and print
     while(bytesRead < numBytes - 1) {
         fread(&nextByte, 1, 1, file);
-        printf("%02X%s", nextByte& 0xFF, delim);
+        printf("%02x%s", nextByte& 0xFF, delim);
         bytesRead++;
     }
 
     // Print last byte without delimiter
     fread(&nextByte, 1, 1, file);
-    printf("%02X", nextByte& 0xFF);
+    printf("%02x", nextByte& 0xFF);
     bytesRead++;
     
     return bytesRead;
@@ -172,19 +188,19 @@ static inline int printByteSafe(FILE* file) {
 // File pointer must point to begining of IP Address
 // Does not check for read errors or EOF
 void printIPAddress(FILE* file) {
-    int nextByte = 0; // Stores read bytes
-    int bytesRead = 0; // Tracks number of bytes read
+    uint8_t nextByte = 0; // Stores read bytes
+    uint8_t bytesRead = 0; // Tracks number of bytes read
 
     // Read bytes and print
     while(bytesRead < IP_ADR_LEN - 1) {
         fread(&nextByte, 1, 1, file);
-        printf("%d.", nextByte);
+        printf("%u.", nextByte);
         bytesRead++;
     }
 
     // Print last byte without delimiter
     fread(&nextByte, 1, 1, file);
-    printf("%d", nextByte);
+    printf("%u", nextByte);
 }
 
 
@@ -253,7 +269,7 @@ void printIPHeader(FILE* packetData) {
     printf("%s%02x", DSCP_LBL, extractedBits); // Display DSCP field
 
     extractedBits = nextByte & 0x03; // Extract 2-bit ECN field
-    printf("%s%02X", ECN_LBL, extractedBits); // Print ECN field
+    printf("%s%02x", ECN_LBL, extractedBits); // Print ECN field
     
     // Print ECN value in English
     if(extractedBits == 0) // ECN disabled
@@ -270,7 +286,7 @@ void printIPHeader(FILE* packetData) {
     extractedBits |= nextByte; // Combine both bytes into 1 value
 
     // Print Total Length Field with bytes combined from big-endian format
-    printf("%s%d", LEN_LBL, extractedBits);
+    printf("%s%u", LEN_LBL, extractedBits);
 
     fread(&nextByte, 1, 1, packetData); // Read first byte of identification field
     extractedBits = nextByte << 8; // Shift bits to left to make room for 2nd byte
@@ -279,7 +295,7 @@ void printIPHeader(FILE* packetData) {
     extractedBits |= nextByte; // Combine both bites into 1 value
 
     // Print Identification with bytes combined from big-endian format
-    printf("%s%d", ID_LBL, extractedBits);
+    printf("%s%u", ID_LBL, extractedBits);
 
     printf(FLAGS_LBL); // Print Fragment field label
 
@@ -298,13 +314,13 @@ void printIPHeader(FILE* packetData) {
     extractedBits = nextByte & 0x1F;
 
     fread(&nextByte, 1, 1, packetData); // Read rest of fragment offset
-    printf("%s%d", FRAG_OFF_LBL, (extractedBits << 8) | nextByte); // Display fragment offset
+    printf("%s%u", FRAG_OFF_LBL, (extractedBits << 8) | nextByte); // Display fragment offset
 
     fread(&nextByte, 1, 1, packetData); // Read Time to Live field
-    printf("%s%d", TTL_LBL, nextByte); // Print Time to Live field
+    printf("%s%u", TTL_LBL, nextByte); // Print Time to Live field
 
     fread(&nextByte, 1, 1, packetData); // Read Protocol field
-    printf("%s%d", PROTOCOL_LBL, nextByte); // Print Protocol field
+    printf("%s%u", PROTOCOL_LBL, nextByte); // Print Protocol field
 
     fread(&nextByte, 1, 1, packetData); // Read first byte of IP Checksum
     extractedBits = nextByte << 8; // Shift bits left by 8 into extractedBits
@@ -325,28 +341,74 @@ void printIPHeader(FILE* packetData) {
 }
 
 
+// Function to read up to 4 bytes sequentially as one value
+// File pointer in data will be advanced nBytes on success
+// Does not check for EOF or read errors
+static inline uint32_t readUIntBE(FILE* data, int nBytes) {
+    uint32_t value = 0; // Resulting BE format value
+    uint8_t nextByte; // Used to read bytes
+
+    while(nBytes > 0) { // Read each byte
+        fread(&nextByte, 1, 1, data); // read 1 byte
+        value = (value << 8) | nextByte; // Shift 1 byte and append
+        nBytes--; // Decrement bytes to read
+    }
+
+    return value;
+}
+
+
+// Reads and prints TCP Packet header from file
+// packetData must already point to start of TCP Header data
+// Formatting and display info defined by TCP Header Format macro constants at top of file
+// Does not check for read errors or EOF 
+// File pointer is advanced to end of header when successful
 void printTCPHeader(FILE* packetData) {
-    int nextByte;
-    int extractedBits;
-    int optLen;
+    uint8_t nextByte, optWords, idx;
 
-    // Read and display first byte of source port
-    fread(&nextByte, 1, 1, packetData);
-    printf("%s%d", SRC_PORT_LBL, nextByte);
+    printf(TCP_LBL);
 
-    // Read and display 2nd byte in source port
-    fread(&nextByte, 1, 1, packetData);
-    printf("%d", nextByte);
+    // Read and display source and destination ports
+    printf("%s%u", SRC_PORT_LBL, readUIntBE(packetData, 2));
+    printf("%s%u", DEST_PORT_LBL, readUIntBE(packetData, 2));
 
-    // Read and display 1st byte in destination port
-    fread(&nextByte, 1, 1, packetData);
-    printf("%s%d", DEST_PORT_LBL, nextByte);
+    // Read and display raw sequence and acknowledgment numbers
+    printf("%s%u", SEQ_NUM_LBL, readUIntBE(packetData, 4)); // Sequence number
+    printf("%s%u", ACK_NUM_LBL, readUIntBE(packetData, 4)); // Acknowledgement number
 
-    // Read and display 2nd byte in destination port
-    fread(&nextByte, 1, 1, packetData);
-    printf("%d", nextByte);
+    // Read and display header data offset (total number of 4-Byte words in header)
+    fread(&nextByte, 1, 1, packetData); // Read full byte of data
+    nextByte >>= 4; // Right shift by 4 to isolate leading 4 bytes
+    optWords = nextByte - 5; // Set number of 4-byte words in options
+    printf("%s%u", DATA_OFS_LBL, nextByte); // Display Data offset
 
+    // Read Byte conta
+    printf(TCP_FLAGS_LBL); // Display header
+    fread(&nextByte, 1, 1, packetData); // Read next byte
 
+    // Check individual bits for flags
+    if(nextByte & BIT_MASK_5) printf("URG "); // Check URGENT flag
+    if(nextByte & BIT_MASK_4) printf("ACK "); // Check ACK flag
+    if(nextByte & BIT_MASK_3) printf("PSH "); // Check PUSH flag
+    if(nextByte & BIT_MASK_2) printf("RST "); // Check RESET flag
+    if(nextByte & BIT_MASK_1) printf("SYN "); // Check SYNCHRONIZE flag
+    if(nextByte & BIT_MASK_0) printf("FIN "); // Check Finish flag
+
+    // Read and display advertised window
+    printf("%s%u", WINDOW_SIZE_LBL, readUIntBE(packetData, 2));
+    
+    // Read and display TCP checksum
+    printf("%s%02x", TCP_CHECKSUM_LBL, readUIntBE(packetData, 2));
+
+    // Read and display urgent pointer
+    printf("%s%u", TCP_URG_PTR_LBL, readUIntBE(packetData, 2));
+
+    if(optWords > 0) { // Read and display options
+        for(idx = 0; idx < optWords; idx++) // Process options sequentially
+            printf("%s%d:\t\t0x%08x", TCP_OPT_LBL, idx, readUIntBE(packetData, 4));
+    } else { // No options in header
+        printf(TCP_NO_OPT_LBL);
+    }
 }
 
 
@@ -373,3 +435,5 @@ int printPayload(FILE* packetData) {
 
     return bytesRead;
 }
+
+
